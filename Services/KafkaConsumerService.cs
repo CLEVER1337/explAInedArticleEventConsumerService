@@ -1,10 +1,19 @@
 using Confluent.Kafka;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 public class KafkaConsumerService : BackgroundService
 {
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly string _topic;
     private readonly ConsumerConfig _consumerConfig;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false,
+    };
 
     public KafkaConsumerService(ILogger<KafkaConsumerService> logger, IConfiguration configuration)
     {
@@ -41,6 +50,24 @@ public class KafkaConsumerService : BackgroundService
                     if(msg != null)
                     {
                         _logger.LogInformation($"Consumed message '{msg.Message.Value}' at: '{msg.TopicPartitionOffset}'.");
+
+                        try
+                        {
+                            var userEvent = JsonSerializer.Deserialize<UserEvent>(msg.Message.Value, JsonOptions);
+                            if (userEvent != null)
+                            {
+                                _logger.LogInformation($"Deserialized UserEvent: {userEvent}");
+                                // business logic here
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Received null UserEvent after deserialization.");
+                            }
+                        }
+                        catch (JsonException jsonEx)
+                        {
+                            _logger.LogError($"JSON deserialization error: {jsonEx.Message}");
+                        }
                     }
                 }
                 catch(ConsumeException ex)
