@@ -74,11 +74,19 @@ public class KafkaConsumerService : BackgroundService
                 {
                     _logger.LogError($"Error consuming message: {ex.Error.Reason}");
                 }
+                catch(KafkaException ex)
+                {
+                    _logger.LogError($"Kafka error: {ex.Error.Reason}");
+                }
             }
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("Consumer loop canceled.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error in consumer loop: {ex.Message}");
         }
         finally
         {
