@@ -25,7 +25,7 @@ public class KafkaConsumerService : BackgroundService
             BootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092",
             GroupId = configuration["Kafka:GroupId"] ?? "default-group",
             AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true
+            EnableAutoCommit = false
         };
     }
 
@@ -57,7 +57,10 @@ public class KafkaConsumerService : BackgroundService
                             if (userEvent != null)
                             {
                                 _logger.LogInformation($"Deserialized UserEvent: {userEvent}");
+                                
                                 // business logic here
+
+                                consumer.Commit(msg);
                             }
                             else
                             {
