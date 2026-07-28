@@ -96,4 +96,18 @@ public class KafkaConsumerService : BackgroundService
             consumer.Close();
         }
     }
+
+    public async void ConsumerCommitMessage(ConsumeResult<Ignore, string> msg)
+    {
+        try
+        {
+            using var consumer = new ConsumerBuilder<Ignore, string>(_consumerConfig).Build();
+            consumer.Commit(msg);
+            _logger.LogInformation($"Committed message at: '{msg.TopicPartitionOffset}'.");
+        }
+        catch (KafkaException ex) 
+        {
+            _logger.LogError($"Error committing message: {ex.Error.Reason}");
+        }
+    }
 }
