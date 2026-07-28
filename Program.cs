@@ -17,6 +17,8 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+builder.Services.AddSingleton<RedisBufferService>();
+
 builder.Services.AddHostedService<KafkaConsumerService>();
 
 var app = builder.Build();

@@ -8,6 +8,8 @@ public class KafkaConsumerService : BackgroundService
     private readonly string _topic;
     private readonly ConsumerConfig _consumerConfig;
 
+    private readonly RedisBufferService _redisBufferService;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -15,10 +17,11 @@ public class KafkaConsumerService : BackgroundService
         WriteIndented = false,
     };
 
-    public KafkaConsumerService(ILogger<KafkaConsumerService> logger, IConfiguration configuration)
+    public KafkaConsumerService(ILogger<KafkaConsumerService> logger, IConfiguration configuration, RedisBufferService redisBufferService)
     {
         _logger = logger;
         _topic = configuration["Kafka:Topic"] ?? "default-topic";
+        _redisBufferService = redisBufferService;
 
         _consumerConfig = new ConsumerConfig
         {
@@ -34,7 +37,7 @@ public class KafkaConsumerService : BackgroundService
         return Task.Run(() => StartConsumerLoop(stoppingToken), stoppingToken);
     }
 
-    private void StartConsumerLoop(CancellationToken stoppingToken)
+    private async Task StartConsumerLoop(CancellationToken stoppingToken)
     {
         using var consumer = new ConsumerBuilder<Ignore, string>(_consumerConfig).Build();
         consumer.Subscribe(_topic);
@@ -53,19 +56,21 @@ public class KafkaConsumerService : BackgroundService
 
                         try
                         {
-                            var userEvent = JsonSerializer.Deserialize<UserEvent>(msg.Message.Value, JsonOptions);
-                            if (userEvent != null)
-                            {
-                                _logger.LogInformation($"Deserialized UserEvent: {userEvent}");
+                            // var userEvent = JsonSerializer.Deserialize<UserEvent>(msg.Message.Value, JsonOptions);
+                            // if (userEvent != null)
+                            // {
+                            //     _logger.LogInformation($"Deserialized UserEvent: {userEvent}");
                                 
-                                // business logic here
+                            //     // business logic here
 
-                                consumer.Commit(msg);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Received null UserEvent after deserialization.");
-                            }
+
+                            // }
+                            // else
+                            // {
+                            //     _logger.LogWarning("Received null UserEvent after deserialization.");
+                            // }
+
+                            await _redisBufferService.AppendValue(msg.Message.Value);
                         }
                         catch (JsonException jsonEx)
                         {
