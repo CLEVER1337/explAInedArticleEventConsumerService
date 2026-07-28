@@ -31,15 +31,16 @@ public class RedisBufferService
             if (value.ToString() != null)
             {
                 values.Add(value.ToString());
+                await _cache.KeyDeleteAsync(key);
             }
         }
 
         return values;
     }
 
-    public async Task RemoveValue(string key)
+    public async Task<int> GetCount()
     {
-        // await _cache.StringDeleteAsync(key);
-        _logger.LogInformation($"Redis: removed string: {key}");
+        var keys = _cache.Multiplexer.GetServer(_cache.Multiplexer.GetEndPoints().First()).Keys(pattern: "*");
+        return keys.Count();
     }
 }
