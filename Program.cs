@@ -15,6 +15,7 @@ builder.Services.AddSingleton(new ClickHouseClient(builder.Configuration["Connec
 builder.Services.AddControllersWithViews();
 
 builder.Services.AddSingleton<RedisBufferService>();
+builder.Services.AddSingleton<ViewedSetService>();
 
 // Singleton + resolved-instance hosted service: the inserter hands offsets back to the very
 // same consumer, since only the instance holding the partition assignment can commit them.

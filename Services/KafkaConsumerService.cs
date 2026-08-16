@@ -11,6 +11,8 @@ public class KafkaConsumerService : BackgroundService
 
     private readonly RedisBufferService _redisBufferService;
 
+    private readonly ViewedSetService _viewedSetService;
+
     private readonly ConcurrentQueue<TopicPartitionOffset> _pendingCommits = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -20,11 +22,16 @@ public class KafkaConsumerService : BackgroundService
         WriteIndented = false,
     };
 
-    public KafkaConsumerService(ILogger<KafkaConsumerService> logger, IConfiguration configuration, RedisBufferService redisBufferService)
+    public KafkaConsumerService(
+        ILogger<KafkaConsumerService> logger,
+        IConfiguration configuration,
+        RedisBufferService redisBufferService,
+        ViewedSetService viewedSetService)
     {
         _logger = logger;
         _topic = configuration["Kafka:Topic"] ?? "default-topic";
         _redisBufferService = redisBufferService;
+        _viewedSetService = viewedSetService;
 
         _consumerConfig = new ConsumerConfig
         {
@@ -80,6 +87,8 @@ public class KafkaConsumerService : BackgroundService
                                     msg.Message.Value);
 
                                 await _redisBufferService.AppendValue(JsonSerializer.Serialize(buffered, JsonOptions));
+
+                                await _viewedSetService.RecordAsync(userEvent);
                             }
                             else
                             {
