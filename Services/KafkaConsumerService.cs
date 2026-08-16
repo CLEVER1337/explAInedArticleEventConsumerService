@@ -1,4 +1,5 @@
 using Confluent.Kafka;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,6 +10,8 @@ public class KafkaConsumerService : BackgroundService
     private readonly ConsumerConfig _consumerConfig;
 
     private readonly RedisBufferService _redisBufferService;
+
+    private readonly ConcurrentQueue<TopicPartitionOffset> _pendingCommits = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -37,6 +40,14 @@ public class KafkaConsumerService : BackgroundService
         return Task.Run(() => StartConsumerLoop(stoppingToken), stoppingToken);
     }
 
+    public void EnqueueCommit(IEnumerable<TopicPartitionOffset> offsets)
+    {
+        foreach (var offset in offsets)
+        {
+            _pendingCommits.Enqueue(offset);
+        }
+    }
+
     private async Task StartConsumerLoop(CancellationToken stoppingToken)
     {
         using var consumer = new ConsumerBuilder<Ignore, string>(_consumerConfig).Build();
@@ -48,35 +59,40 @@ public class KafkaConsumerService : BackgroundService
             {
                 try
                 {
-                    var msg = consumer.Consume(stoppingToken);
+                    var msg = consumer.Consume(TimeSpan.FromSeconds(1));
 
-                    if(msg != null)
+                    if(msg != null && !msg.IsPartitionEOF)
                     {
                         _logger.LogInformation($"Consumed message '{msg.Message.Value}' at: '{msg.TopicPartitionOffset}'.");
 
                         try
                         {
-                            // var userEvent = JsonSerializer.Deserialize<UserEvent>(msg.Message.Value, JsonOptions);
-                            // if (userEvent != null)
-                            // {
-                            //     _logger.LogInformation($"Deserialized UserEvent: {userEvent}");
-                                
-                            //     // business logic here
+                            var userEvent = string.IsNullOrWhiteSpace(msg.Message.Value)
+                                ? null
+                                : JsonSerializer.Deserialize<UserEvent>(msg.Message.Value, JsonOptions);
 
+                            if (userEvent != null)
+                            {
+                                var buffered = new BufferedEvent(
+                                    msg.Topic,
+                                    msg.Partition.Value,
+                                    msg.Offset.Value,
+                                    msg.Message.Value);
 
-                            // }
-                            // else
-                            // {
-                            //     _logger.LogWarning("Received null UserEvent after deserialization.");
-                            // }
-
-                            await _redisBufferService.AppendValue(msg.Message.Value);
+                                await _redisBufferService.AppendValue(JsonSerializer.Serialize(buffered, JsonOptions));
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"Received null UserEvent after deserialization, skipping: '{msg.TopicPartitionOffset}'.");
+                            }
                         }
                         catch (JsonException jsonEx)
                         {
-                            _logger.LogError($"JSON deserialization error: {jsonEx.Message}");
+                            _logger.LogError($"JSON deserialization error at '{msg.TopicPartitionOffset}': {jsonEx.Message}");
                         }
                     }
+
+                    FlushPendingCommits(consumer);
                 }
                 catch(ConsumeException ex)
                 {
@@ -98,21 +114,33 @@ public class KafkaConsumerService : BackgroundService
         }
         finally
         {
+            FlushPendingCommits(consumer);
             consumer.Close();
         }
     }
 
-    public async void ConsumerCommitMessage(ConsumeResult<Ignore, string> msg)
+    private void FlushPendingCommits(IConsumer<Ignore, string> consumer)
     {
+        var offsets = new List<TopicPartitionOffset>();
+
+        while (_pendingCommits.TryDequeue(out var offset))
+        {
+            offsets.Add(offset);
+        }
+
+        if (offsets.Count == 0)
+        {
+            return;
+        }
+
         try
         {
-            using var consumer = new ConsumerBuilder<Ignore, string>(_consumerConfig).Build();
-            consumer.Commit(msg);
-            _logger.LogInformation($"Committed message at: '{msg.TopicPartitionOffset}'.");
+            consumer.Commit(offsets);
+            _logger.LogInformation($"Committed offsets: {string.Join(", ", offsets)}.");
         }
-        catch (KafkaException ex) 
+        catch (KafkaException ex)
         {
-            _logger.LogError($"Error committing message: {ex.Error.Reason}");
+            _logger.LogError($"Error committing offsets: {ex.Error.Reason}");
         }
     }
 }
