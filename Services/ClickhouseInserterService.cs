@@ -38,7 +38,7 @@ public class ClickhouseInserterService : BackgroundService
         _clickHouseClient = clickHouseClient;
         _batchSize = int.Parse(configuration["ClickHouse:BatchSize"] ?? "100");
         _insertDelayMs = int.Parse(configuration["ClickHouse:InsertDelayMs"] ?? "10000");
-        _tableName = configuration["ClickHouse:Table"] ?? "article_events";
+        _tableName = configuration["ClickHouse:Table"] ?? "user_events";
         _lastInsertTime = DateTime.MinValue;
     }
 
